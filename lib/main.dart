@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -376,6 +377,7 @@ class ManHinhChinh extends StatefulWidget {
 
 class _ManHinhChinhState extends State<ManHinhChinh> {
   int _mucDuocChon = 0;
+  DateTime? selectedDate; // Biến để lưu ngày đã chọn
 
   static const List<Widget> _cacTrang = <Widget>[
     ManHinhDichVu(),
@@ -389,6 +391,32 @@ class _ManHinhChinhState extends State<ManHinhChinh> {
     setState(() {
       _mucDuocChon = index;
     });
+  }
+
+  void _showDateDialog() {
+    if (selectedDate == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Chưa có ngày đặt lịch!')));
+    } else {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Ngày Đặt Lịch'),
+            content: Text(
+              'Ngày bạn đã chọn: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Đóng'),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
   @override
@@ -446,6 +474,11 @@ class _ManHinhChinhState extends State<ManHinhChinh> {
         unselectedItemColor: Colors.grey,
         onTap: _chonMuc,
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showDateDialog,
+        child: const Icon(Icons.notifications),
+        backgroundColor: Colors.orangeAccent,
+      ),
     );
   }
 }
@@ -468,17 +501,6 @@ class ManHinhDichVu extends StatelessWidget {
         'gia': '200,000 VND',
         'hinhAnh':
             'https://thucungshinpet.com/wp-content/uploads/2023/02/2.jpg',
-      },
-      {
-        'ten': 'Mua Thức Ăn',
-        'moTa':
-            'Cung cấp thức ăn chất lượng cao, giàu dinh dưỡng và phù hợp với từng giai đoạn phát triển của thú cưng. '
-            'Sản phẩm bao gồm thức ăn hạt, pate, snack thưởng, và thức ăn tươi như thịt, cá, rau củ chế biến sẵn. '
-            'Thức ăn đảm bảo không chứa chất bảo quản độc hại, hỗ trợ hệ tiêu hóa, giúp thú cưng phát triển khỏe mạnh, lông mượt, tăng sức đề kháng. '
-            'Có nhiều dòng sản phẩm từ các thương hiệu nổi tiếng như Royal Canin, Pedigree, NutriSource, và nhiều hãng khác.',
-        'gia': '100,000 VND',
-        'hinhAnh':
-            'https://petservicehcm.com/wp-content/uploads/2024/07/thuc-an-cho-thu-cung.jpg',
       },
       {
         'ten': 'Tiêm Phòng',
@@ -515,6 +537,17 @@ class ManHinhDichVu extends StatelessWidget {
         'gia': '400,000 VND',
         'hinhAnh':
             'https://benhvienthuyanipet.com/wp-content/uploads/2021/10/tu-van-kham-chua-benh-pet-3.jpg',
+      },
+      {
+        'ten': 'Mua Thức Ăn',
+        'moTa':
+            'Cung cấp thức ăn chất lượng cao, giàu dinh dưỡng và phù hợp với từng giai đoạn phát triển của thú cưng. '
+            'Sản phẩm bao gồm thức ăn hạt, pate, snack thưởng, và thức ăn tươi như thịt, cá, rau củ chế biến sẵn. '
+            'Thức ăn đảm bảo không chứa chất bảo quản độc hại, hỗ trợ hệ tiêu hóa, giúp thú cưng phát triển khỏe mạnh, lông mượt, tăng sức đề kháng. '
+            'Có nhiều dòng sản phẩm từ các thương hiệu nổi tiếng như Royal Canin, Pedigree, NutriSource, và nhiều hãng khác.',
+        'gia': '100,000 VND',
+        'hinhAnh':
+            'https://petservicehcm.com/wp-content/uploads/2024/07/thuc-an-cho-thu-cung.jpg',
       },
     ];
 
@@ -1325,11 +1358,19 @@ class ManHinhGioHang extends StatefulWidget {
 }
 
 class _ManHinhGioHangState extends State<ManHinhGioHang> {
+  DateTime? selectedDate; // Biến để lưu ngày đã chọn
+  final String userId = "user_id"; // Thay thế bằng ID người dùng thực tế
+  late CartProvider cartProvider; // Khai báo cartProvider
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    cartProvider = Cart.of(context).cartProvider; // Lấy CartProvider từ context
+    loadCartFromFirestore(userId); // Tải giỏ hàng từ Firestore khi khởi tạo
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cart = Cart.of(context); // Lấy Cart từ context
-    final cartProvider = cart.cartProvider; // Lấy CartProvider từ Cart
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -1353,6 +1394,7 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
               )
               : Column(
                 children: [
+                  _buildDatePicker(), // Thêm widget chọn ngày
                   Expanded(
                     child: ListView.builder(
                       itemCount: cartProvider.items.length,
@@ -1399,6 +1441,10 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
                                     ),
                                   ),
                                 );
+                                saveCartToFirestore(
+                                  userId,
+                                  cartProvider,
+                                ); // Lưu giỏ hàng sau khi xóa
                               },
                             ),
                           ),
@@ -1411,6 +1457,72 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
               ),
       bottomNavigationBar:
           cartProvider.items.isEmpty ? null : _buildOrderButton(cartProvider),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          print("Ngày đã chọn: $selectedDate"); // Debug log
+
+          if (selectedDate == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Chưa có ngày đặt lịch!')),
+            );
+          } else {
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text('Ngày Đặt Lịch'),
+                  content: Text(
+                    'Ngày bạn đã chọn: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Đóng'),
+                    ),
+                  ],
+                );
+              },
+            );
+          }
+        },
+        child: const Icon(Icons.notifications),
+        backgroundColor: Colors.orangeAccent,
+      ),
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            selectedDate == null
+                ? 'Chọn ngày đặt lịch'
+                : 'Ngày đặt: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
+            style: const TextStyle(fontSize: 16),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: selectedDate ?? DateTime.now(),
+                firstDate: DateTime.now(),
+                lastDate: DateTime(2101),
+              );
+              if (pickedDate != null && pickedDate != selectedDate) {
+                setState(() {
+                  selectedDate = pickedDate; // Cập nhật ngày đã chọn
+                });
+                // Lưu giỏ hàng sau khi chọn ngày
+                saveCartToFirestore(userId, cartProvider);
+              }
+            },
+            child: const Text('Chọn Ngày'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1448,16 +1560,18 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         onPressed: () {
+          // Lưu giỏ hàng vào Firestore trước khi đặt hàng
+          saveCartToFirestore(userId, cartProvider);
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Đặt hàng thành công!')));
+          ).showSnackBar(const SnackBar(content: Text('Đặt lịch thành công!')));
           setState(() {
             cartProvider.clear(); // Xóa tất cả sản phẩm trong giỏ hàng
           });
         },
         icon: const Icon(Icons.shopping_cart_checkout, color: Colors.white),
         label: const Text(
-          'Xác nhận đặt hàng',
+          'Xác nhận đặt lịch',
           style: TextStyle(
             fontSize: 18,
             color: Colors.white,
@@ -1466,6 +1580,46 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
         ),
       ),
     );
+  }
+
+  Future<void> saveCartToFirestore(
+    String userId,
+    CartProvider cartProvider,
+  ) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'cart': cartProvider.items,
+        'selectedDate': selectedDate?.toIso8601String(), // Lưu ngày đặt lịch
+      });
+    } catch (e) {
+      print("Error saving cart: $e");
+    }
+  }
+
+  Future<void> loadCartFromFirestore(String userId) async {
+    try {
+      DocumentSnapshot doc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+      if (doc.exists) {
+        List<dynamic> cartItems = doc['cart'];
+        cartProvider.clear(); // Xóa giỏ hàng hiện tại
+        for (var item in cartItems) {
+          cartProvider.addItem(item);
+        }
+        // Tải ngày đặt lịch
+        if (doc['selectedDate'] != null) {
+          selectedDate = DateTime.parse(
+            doc['selectedDate'],
+          ); // Chuyển đổi chuỗi thành DateTime
+          print("Ngày đã tải: $selectedDate"); // Debug log
+        }
+      }
+    } catch (e) {
+      print("Error loading cart: $e");
+    }
   }
 }
 
