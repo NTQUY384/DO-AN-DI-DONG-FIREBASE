@@ -1358,241 +1358,37 @@ class ManHinhGioHang extends StatefulWidget {
 }
 
 class _ManHinhGioHangState extends State<ManHinhGioHang> {
-  DateTime? selectedDate; // Biến để lưu ngày đã chọn
-  final String userId = "user_id"; // Thay thế bằng ID người dùng thực tế
-  late CartProvider cartProvider; // Khai báo cartProvider
+  DateTime? selectedDate;
+  late CartProvider cartProvider;
+  late String userId;
+  List<Map<String, dynamic>> appointmentHistory = [];
+  bool _isLoading = true;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    cartProvider = Cart.of(context).cartProvider; // Lấy CartProvider từ context
-    loadCartFromFirestore(userId); // Tải giỏ hàng từ Firestore khi khởi tạo
+    if (_isLoading) {
+      cartProvider = Cart.of(context).cartProvider;
+      userId = FirebaseAuth.instance.currentUser?.uid ?? "default_user";
+      _loadInitialData();
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Giỏ Hàng',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.orangeAccent,
-        centerTitle: true,
-      ),
-      body:
-          cartProvider.items.isEmpty
-              ? const Center(
-                child: Text(
-                  'Giỏ hàng trống!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-              )
-              : Column(
-                children: [
-                  _buildDatePicker(), // Thêm widget chọn ngày
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: cartProvider.items.length,
-                      itemBuilder: (context, index) {
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 3,
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          child: ListTile(
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                cartProvider.items[index]['hinhAnh']!,
-                                width: 60,
-                                height: 60,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            title: Text(
-                              cartProvider.items[index]['ten']!,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Giá: ${cartProvider.items[index]['gia']}',
-                              style: const TextStyle(color: Colors.deepOrange),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  cartProvider.removeItem(index);
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Sản phẩm đã được xóa khỏi giỏ hàng!',
-                                    ),
-                                  ),
-                                );
-                                saveCartToFirestore(
-                                  userId,
-                                  cartProvider,
-                                ); // Lưu giỏ hàng sau khi xóa
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  _buildTotalPrice(cartProvider),
-                ],
-              ),
-      bottomNavigationBar:
-          cartProvider.items.isEmpty ? null : _buildOrderButton(cartProvider),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          print("Ngày đã chọn: $selectedDate"); // Debug log
-
-          if (selectedDate == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Chưa có ngày đặt lịch!')),
-            );
-          } else {
-            showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return AlertDialog(
-                  title: const Text('Ngày Đặt Lịch'),
-                  content: Text(
-                    'Ngày bạn đã chọn: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Đóng'),
-                    ),
-                  ],
-                );
-              },
-            );
-          }
-        },
-        child: const Icon(Icons.notifications),
-        backgroundColor: Colors.orangeAccent,
-      ),
-    );
-  }
-
-  Widget _buildDatePicker() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            selectedDate == null
-                ? 'Chọn ngày đặt lịch'
-                : 'Ngày đặt: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
-            style: const TextStyle(fontSize: 16),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              DateTime? pickedDate = await showDatePicker(
-                context: context,
-                initialDate: selectedDate ?? DateTime.now(),
-                firstDate: DateTime.now(),
-                lastDate: DateTime(2101),
-              );
-              if (pickedDate != null && pickedDate != selectedDate) {
-                setState(() {
-                  selectedDate = pickedDate; // Cập nhật ngày đã chọn
-                });
-                // Lưu giỏ hàng sau khi chọn ngày
-                saveCartToFirestore(userId, cartProvider);
-              }
-            },
-            child: const Text('Chọn Ngày'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalPrice(CartProvider cartProvider) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Card(
-        color: Colors.orangeAccent.withOpacity(0.2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Text(
-            'Tổng số tiền: ${formatCurrency(cartProvider.totalPrice())}',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrderButton(CartProvider cartProvider) {
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orangeAccent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-        ),
-        onPressed: () {
-          // Lưu giỏ hàng vào Firestore trước khi đặt hàng
-          saveCartToFirestore(userId, cartProvider);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Đặt lịch thành công!')));
-          setState(() {
-            cartProvider.clear(); // Xóa tất cả sản phẩm trong giỏ hàng
-          });
-        },
-        icon: const Icon(Icons.shopping_cart_checkout, color: Colors.white),
-        label: const Text(
-          'Xác nhận đặt lịch',
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> saveCartToFirestore(
-    String userId,
-    CartProvider cartProvider,
-  ) async {
+  Future<void> _loadInitialData() async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'cart': cartProvider.items,
-        'selectedDate': selectedDate?.toIso8601String(), // Lưu ngày đặt lịch
-      });
+      await loadCartFromFirestore(userId);
+      await loadAppointmentHistory();
     } catch (e) {
-      print("Error saving cart: $e");
+      print("Error loading initial data: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Lỗi khi tải dữ liệu: ${e.toString()}")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -1603,23 +1399,503 @@ class _ManHinhGioHangState extends State<ManHinhGioHang> {
               .collection('users')
               .doc(userId)
               .get();
+
       if (doc.exists) {
-        List<dynamic> cartItems = doc['cart'];
-        cartProvider.clear(); // Xóa giỏ hàng hiện tại
-        for (var item in cartItems) {
-          cartProvider.addItem(item);
+        // Load cart items
+        if (doc['cart'] != null) {
+          List<dynamic> cartItems = doc['cart'];
+          cartProvider.clear();
+          for (var item in cartItems) {
+            cartProvider.addItem(Map<String, String>.from(item));
+          }
         }
-        // Tải ngày đặt lịch
+
+        // Load selected date
         if (doc['selectedDate'] != null) {
-          selectedDate = DateTime.parse(
-            doc['selectedDate'],
-          ); // Chuyển đổi chuỗi thành DateTime
-          print("Ngày đã tải: $selectedDate"); // Debug log
+          setState(() {
+            selectedDate = DateTime.parse(doc['selectedDate']);
+          });
         }
       }
     } catch (e) {
       print("Error loading cart: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Lỗi khi tải giỏ hàng: ${e.toString()}")),
+      );
     }
+  }
+
+  Future<void> loadAppointmentHistory() async {
+    try {
+      QuerySnapshot querySnapshot =
+          await FirebaseFirestore.instance
+              .collection('appointments')
+              .where('userId', isEqualTo: userId)
+              .orderBy('createdAt', descending: true)
+              .get();
+
+      setState(() {
+        appointmentHistory =
+            querySnapshot.docs
+                .map((doc) => doc.data() as Map<String, dynamic>)
+                .toList();
+      });
+    } catch (e) {
+      print("Error loading appointment history: $e");
+    }
+  }
+
+  Future<void> saveCartToFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      // Save to appointments collection
+      await FirebaseFirestore.instance.collection('appointments').add({
+        'userId': userId,
+        'userEmail': user?.email,
+        'userName': user?.displayName,
+        'items': cartProvider.items,
+        'totalPrice': cartProvider.totalPrice(),
+        'selectedDate': selectedDate?.toIso8601String(),
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update user's cart
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'cart': cartProvider.items,
+        'selectedDate': selectedDate?.toIso8601String(),
+        'lastCartUpdate': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã đặt lịch thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Refresh data
+      await loadAppointmentHistory();
+    } catch (e) {
+      print("Error saving cart: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi đặt lịch: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Giỏ Hàng',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.orangeAccent,
+        centerTitle: true,
+        actions: [
+          if (appointmentHistory.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.history),
+              onPressed: () => _showAppointmentHistory(),
+            ),
+        ],
+      ),
+      body:
+          cartProvider.items.isEmpty
+              ? _buildEmptyCart()
+              : Column(
+                children: [
+                  _buildDatePicker(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: cartProvider.items.length,
+                      itemBuilder: (context, index) {
+                        final item = cartProvider.items[index];
+                        return _buildCartItem(item, index);
+                      },
+                    ),
+                  ),
+                  _buildTotalPrice(),
+                ],
+              ),
+      bottomNavigationBar:
+          cartProvider.items.isEmpty ? null : _buildOrderButton(),
+    );
+  }
+
+  Widget _buildEmptyCart() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.shopping_cart, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text(
+            'Giỏ hàng trống!',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const ManHinhChinh()),
+              );
+            },
+            child: const Text('Quay lại trang chủ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Thông tin đặt lịch',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedDate == null
+                            ? 'Chưa chọn ngày'
+                            : 'Ngày đã chọn:',
+                        style: TextStyle(
+                          color:
+                              selectedDate == null ? Colors.grey : Colors.black,
+                        ),
+                      ),
+                      if (selectedDate != null)
+                        Text(
+                          DateFormat('dd/MM/yyyy').format(selectedDate!),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _selectDate(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orangeAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      selectedDate == null ? 'Chọn ngày' : 'Đổi ngày',
+                    ),
+                  ),
+                ],
+              ),
+              if (selectedDate != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Giờ làm việc: 8:00 - 17:00',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: selectedDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.orangeAccent,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(foregroundColor: Colors.orangeAccent),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null && pickedDate != selectedDate) {
+      setState(() {
+        selectedDate = pickedDate;
+      });
+    }
+  }
+
+  Widget _buildCartItem(Map<String, String> item, int index) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 3,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: ListTile(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            item['hinhAnh']!,
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(Icons.pets, size: 40, color: Colors.grey);
+            },
+          ),
+        ),
+        title: Text(
+          item['ten']!,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          'Giá: ${item['gia']}',
+          style: const TextStyle(color: Colors.deepOrange),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () {
+            setState(() {
+              cartProvider.removeItem(index);
+            });
+            saveCartToFirestore();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Đã xóa dịch vụ khỏi giỏ hàng'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotalPrice() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Card(
+        color: Colors.orangeAccent.withOpacity(0.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Tổng cộng:',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    formatCurrency(cartProvider.totalPrice()),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepOrange,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (selectedDate != null)
+                Text(
+                  'Ngày đặt: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderButton() {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.orangeAccent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          minimumSize: const Size(double.infinity, 50),
+        ),
+        onPressed: () {
+          if (selectedDate == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Vui lòng chọn ngày đặt lịch'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+
+          showDialog(
+            context: context,
+            builder:
+                (context) => AlertDialog(
+                  title: const Text('Xác nhận đặt lịch'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Bạn có chắc chắn muốn đặt lịch với:'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Ngày: ${DateFormat('dd/MM/yyyy').format(selectedDate!)}',
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tổng tiền: ${formatCurrency(cartProvider.totalPrice())}',
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Hủy'),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orangeAccent,
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await saveCartToFirestore();
+                        setState(() {
+                          cartProvider.clear();
+                          selectedDate = null;
+                        });
+                      },
+                      child: const Text('Xác nhận'),
+                    ),
+                  ],
+                ),
+          );
+        },
+        icon: const Icon(Icons.shopping_cart_checkout, color: Colors.white),
+        label: const Text(
+          'ĐẶT LỊCH NGAY',
+          style: TextStyle(
+            fontSize: 18,
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAppointmentHistory() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Lịch sử đặt lịch'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: appointmentHistory.length,
+                itemBuilder: (context, index) {
+                  final appointment = appointmentHistory[index];
+                  final date =
+                      appointment['selectedDate'] != null
+                          ? DateTime.parse(appointment['selectedDate'])
+                          : null;
+                  final items = appointment['items'] as List<dynamic>? ?? [];
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (date != null)
+                            Text(
+                              'Ngày: ${DateFormat('dd/MM/yyyy').format(date)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          Text(
+                            'Trạng thái: ${appointment['status'] ?? 'pending'}',
+                            style: TextStyle(
+                              color:
+                                  (appointment['status'] == 'completed')
+                                      ? Colors.green
+                                      : Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text('Dịch vụ:'),
+                          ...items.map((item) {
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Text('- ${item['ten']} (${item['gia']})'),
+                            );
+                          }).toList(),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tổng tiền: ${formatCurrency(appointment['totalPrice'] ?? 0)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Đóng'),
+              ),
+            ],
+          ),
+    );
   }
 }
 
