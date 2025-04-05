@@ -383,6 +383,7 @@ class _ManHinhChinhState extends State<ManHinhChinh> {
     ManHinhDichVu(),
     ManHinhUuDai(),
     ManHinhGioHang(),
+    ManHinhLichHen(), // Thêm màn hình lịch hẹn mới
     ManHinhHoTroKhachHang(),
     ManHinhCaiDat(),
   ];
@@ -462,6 +463,12 @@ class _ManHinhChinhState extends State<ManHinhChinh> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: 'Giỏ hàng',
+          ),
+
+          BottomNavigationBarItem(
+            // Thêm item mới cho lịch hẹn
+            icon: Icon(Icons.calendar_today),
+            label: 'Lịch hẹn',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.support_agent),
@@ -1952,4 +1959,236 @@ class CartProvider {
 String formatCurrency(double amount) {
   // Định dạng số tiền với dấu phẩy
   return '${amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} VND';
+}
+
+class ManHinhLichHen extends StatefulWidget {
+  const ManHinhLichHen({super.key});
+
+  @override
+  State<ManHinhLichHen> createState() => _ManHinhLichHenState();
+}
+
+class _ManHinhLichHenState extends State<ManHinhLichHen> {
+  List<Map<String, dynamic>> appointments = [];
+  bool isLoading = true;
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppointments();
+  }
+
+  Future<void> _loadAppointments() async {
+    try {
+      if (userId == null) return;
+
+      final querySnapshot =
+          await FirebaseFirestore.instance
+              .collection('appointments')
+              .where('userId', isEqualTo: userId)
+              .orderBy('createdAt', descending: true)
+              .get();
+
+      setState(() {
+        appointments =
+            querySnapshot.docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return {
+                ...data,
+                'id': doc.id, // Thêm ID document để tiện thao tác
+              };
+            }).toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Lỗi tải lịch hẹn: $e');
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi tải lịch hẹn: ${e.toString()}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Lịch Hẹn Của Tôi'),
+        backgroundColor: Colors.orangeAccent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadAppointments,
+          ),
+        ],
+      ),
+      body: _buildContent(),
+    );
+  }
+
+  Widget _buildContent() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (appointments.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.calendar_today, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'Bạn chưa có lịch hẹn nào',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            TextButton(
+              onPressed:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ManHinhDichVu(),
+                    ),
+                  ),
+              child: const Text('Đặt lịch ngay'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: appointments.length,
+      itemBuilder: (context, index) {
+        final appointment = appointments[index];
+        return _buildAppointmentCard(appointment);
+      },
+    );
+  }
+
+  Widget _buildAppointmentCard(Map<String, dynamic> appointment) {
+    final date =
+        appointment['selectedDate'] != null
+            ? DateTime.parse(appointment['selectedDate'])
+            : null;
+    final createdAt =
+        appointment['createdAt'] != null
+            ? (appointment['createdAt'] as Timestamp).toDate()
+            : null;
+    final items = List<Map<String, dynamic>>.from(appointment['items'] ?? []);
+    final status = appointment['status'] ?? 'pending';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header với ID và trạng thái
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Mã #${appointment['id'].substring(0, 6)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: status == 'completed' ? Colors.green : Colors.orange,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status == 'completed' ? 'Hoàn thành' : 'Đang chờ',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+
+            const Divider(height: 16),
+
+            // Thông tin ngày
+            if (date != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Ngày hẹn: ${DateFormat('dd/MM/yyyy').format(date)}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Thông tin đặt lịch
+            if (createdAt != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.access_time, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Đặt lúc: ${DateFormat('HH:mm dd/MM/yyyy').format(createdAt)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // Danh sách dịch vụ
+            const Text(
+              'Dịch vụ:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: Row(
+                  children: [
+                    const Text('• ', style: TextStyle(color: Colors.orange)),
+                    Expanded(
+                      child: Text(
+                        '${item['ten']} (${item['gia']})',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const Divider(height: 16),
+
+            // Tổng tiền
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Tổng cộng:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  formatCurrency(appointment['totalPrice']?.toDouble() ?? 0),
+                  style: const TextStyle(
+                    color: Colors.deepOrange,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
